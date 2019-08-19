@@ -1,47 +1,49 @@
-#Se importan las librerias necesarias para la ejecución de variables
-
 from __future__ import print_function
-import httplib2
-import os
+import pickle
+import os.path
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
-from apiclient import discovery
-from oauth2client import client
-from oauth2client import tools
-from oauth2client.file import Storage
 
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
+SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly']
 
-#Se define la clase auth en donde se trae la información de validación de usuario
-class auth:
-    def __init__(self,SCOPES,CLIENT_SECRET_FILE,APPLICATION_NAME):
-        self.SCOPES = SCOPES
-        self.CLIENT_SECRET_FILE = CLIENT_SECRET_FILE
-        self.APPLICATION_NAME = APPLICATION_NAME
-    def getCredentials(self):
-     #Se obtienen las credenciales de usuario válidas.
-     #Si las credenciales almacenadas no son válidas, el flujo de OAuth2 se completa para obtener las nuevas credenciales.     
-        
-        cwd_dir = os.getcwd()
-        credential_dir = os.path.join(cwd_dir, '.credentials')
-        if not os.path.exists(credential_dir):
-            os.makedirs(credential_dir)
-        credential_path = os.path.join(credential_dir,
-                                       'google-drive-credentials.json')
+def auth():
+ #Muestra el uso básico de la API de Drive v3.
+   # Imprime los nombres y los id de los primeros 10 archivos a los que el usuario tiene acceso.
+    
+    creds = None
+# El archivo token.pickle almacena el acceso de los usuarios y actualiza los tokens, y es creado automáticamente cuando se completa
+#el flujo de autorización.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+   # Si las credenciales no son validas, se permite que el usuario inicie sesión.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Guarda las credenciales para la próxima ejecución
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
 
-        store = Storage(credential_path)
-        credentials = store.get()
-        if not credentials or credentials.invalid:
-            flow = client.flow_from_clientsecrets(self.CLIENT_SECRET_FILE, self.SCOPES)
-            flow.user_agent = self.APPLICATION_NAME
-            if flags:
-                credentials = tools.run_flow(flow, store, flags)
-            else: 
-                credentials = tools.run(flow, store)
-            print('Storing credentials to ' + credential_path)
-        return credentials
-        
+    service = build('drive', 'v3', credentials=creds)
+
+    #Llamada a l API de Drive
+    results = service.files().list(
+        pageSize=10, fields="nextPageToken, files(id, name)").execute()
+    items = results.get('files', [])
+
+    if not items:
+        print('No files found.')
+    else:
+        print('Files:')
+        for item in items:
+            print(u'{0} ({1})'.format(item['name'], item['id']))
+
+if __name__ == '__main__':
+    auth()
         
